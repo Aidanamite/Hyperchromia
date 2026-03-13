@@ -15,8 +15,13 @@ public class Hyperchromia : Mod
     public static int endInd;
     public static Dictionary<uint, SO_ColorValue> cachedColors;
     public static Color darkOutline = new Color(0.345f, 0.25f, 0.145f);
+    public static Transform prefabParent;
+    public static GameObject sliderPrefab;
     public void Start()
     {
+        prefabParent = new GameObject("HyperchromiaPrefabParent").transform;
+        prefabParent.gameObject.SetActive(false);
+        DontDestroyOnLoad(prefabParent.gameObject);
         cachedColors = new Dictionary<uint, SO_ColorValue>();
         if (RAPI.GetLocalPlayer() != null && ComponentManager<CanvasHelper>.Value != null && ComponentManager<CanvasHelper>.Value.GetMenu(MenuType.PaintMenu) != null)
             modifyPaintMenu();
@@ -30,6 +35,8 @@ public class Hyperchromia : Mod
     public void OnModUnload()
     {
         harmony.UnpatchAll(harmony.Id);
+        if (prefabParent)
+            Destroy(prefabParent.gameObject);
         if (ComponentManager<CanvasHelper>.Value != null)
         {
             Patch_UI.currentInfo.Destroy();
@@ -105,7 +112,7 @@ public class Hyperchromia : Mod
         //Debug.Log("color j " + j);
         color.whiteCost = new Cost(null, j);
         color.blackCost = new Cost(null, 6 - colorAmount - j);
-        Traverse.Create(color).Method("OnValidate").GetValue();
+        color.OnValidate();
 
         cachedColors.Add(colorIndex, color);
         return color;
@@ -136,28 +143,30 @@ public class Hyperchromia : Mod
         RectTransform back = menu.Find("BrownBackground") as RectTransform;
         back.offsetMax += new Vector2(250, 0);
         back.offsetMin -= new Vector2(250, 0);
-        Transform OptCon = Traverse.Create(ComponentManager<Settings>.Value).Field("optionsCanvas").GetValue<GameObject>().transform.FindChildRecursively("OptionMenuParent").FindChildRecursively("Graphics").FindChildRecursively("Content");
-        GameObject sliderPrefab = null;
-        foreach (Transform transform in OptCon.transform)
-        {
-            if (transform.GetComponentInChildren<UISlider>() != null)
+        if (!sliderPrefab)
+            foreach (Transform transform in ComponentManager<Settings>.Value.optionsCanvas.transform.FindChildRecursively("OptionMenuParent").FindChildRecursively("Graphics").FindChildRecursively("Content"))
             {
-                sliderPrefab = GameObject.Instantiate(transform.GetComponentInChildren<Slider>().gameObject, null, false);
-                sliderPrefab.name = "SliderPrefab";
-                Slider slide = sliderPrefab.GetComponent<Slider>();
-                slide.onValueChanged = new Slider.SliderEvent();
-                slide.minValue = 0;
-                slide.maxValue = 255;
-                slide.wholeNumbers = true;
-                slide.value = 0;
-                var trans = slide.transform as RectTransform;
-                trans.localRotation = Quaternion.Euler(0, 0, 90);
-                trans.sizeDelta *= new Vector2(1.3f, 1);
-                trans.anchorMin = Vector2.one / 2;
-                trans.anchorMax = Vector2.one / 2;
-                break;
+                if (transform.GetComponentInChildren<UISlider>() != null)
+                {
+                    sliderPrefab = GameObject.Instantiate(transform.GetComponentInChildren<Slider>().gameObject, prefabParent, false);
+                    sliderPrefab.name = "SliderPrefab";
+                    foreach (var i in sliderPrefab.GetComponentsInChildren<SelectableMenuItem>(true))
+                        if (!i.selected && !i.transform.parent?.Find("Selected"))
+                            DestroyImmediate(i);
+                    Slider slide = sliderPrefab.GetComponent<Slider>();
+                    slide.onValueChanged = new Slider.SliderEvent();
+                    slide.minValue = 0;
+                    slide.maxValue = 255;
+                    slide.wholeNumbers = true;
+                    slide.value = 0;
+                    var trans = slide.transform as RectTransform;
+                    trans.localRotation = Quaternion.Euler(0, 0, 90);
+                    trans.sizeDelta *= new Vector2(1.3f, 1);
+                    trans.anchorMin = Vector2.one / 2;
+                    trans.anchorMax = Vector2.one / 2;
+                    break;
+                }
             }
-        }
         RectTransform RGBP = new GameObject("Primary_RGBControlContainer").AddComponent<RectTransform>();
         RGBP.SetParent(menu, false);
         RGBP.anchorMax = new Vector2(0, 0.5f);
@@ -533,7 +542,7 @@ public class InfoWindow
     public Text display;
     public InfoWindow(CanvasHelper canvas)
     {
-        Transform OptionMenuContainer = Traverse.Create(ComponentManager<Settings>.Value).Field("optionsCanvas").GetValue<GameObject>().transform.FindChildRecursively("OptionMenuParent");
+        Transform OptionMenuContainer = ComponentManager<Settings>.Value.optionsCanvas.transform.FindChildRecursively("OptionMenuParent");
         GameObject backgroundImg = OptionMenuContainer.transform.FindChildRecursively("BrownBackground").gameObject;
 
         gameObject = new GameObject("PaintInfoWindow");
